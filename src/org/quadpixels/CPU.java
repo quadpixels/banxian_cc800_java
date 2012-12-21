@@ -258,7 +258,16 @@ public class CPU {
 			if(flag_z == true) regs.ps |= AF_ZERO;
 		}
 	}
-	final EF_TO_AF ef_to_af = new EF_TO_AF();
+	//final EF_TO_AF ef_to_af = new EF_TO_AF();
+	
+	private void ef_to_af() {
+		regs.ps = (byte) (regs.ps & ~(AF_CARRY | AF_SIGN | AF_OVERFLOW 
+				| AF_ZERO));
+		if(flag_c == true) regs.ps |= AF_CARRY;
+		if(flag_n == true) regs.ps |= AF_SIGN;
+		if(flag_v == true) regs.ps |= AF_OVERFLOW;
+		if(flag_z == true) regs.ps |= AF_ZERO;
+	}
 	
 	final class TOBIN {
 		byte foo(byte b) {
@@ -296,99 +305,130 @@ public class CPU {
 	}
 	final class ABS implements AddressMode {
 		public void foo() {
-			pc = ((int)regs.pc) & 0x0000FFFF;
-			addr = theFleurDeLisDriver.getWord(pc);
-			regs.pc = (short)(pc+2);
+			am_abs();
 		}
 	}
 	final ABS abs = new ABS();
+	private void am_abs() {
+		pc = ((int)regs.pc) & 0x0000FFFF;
+		addr = theFleurDeLisDriver.getWord(pc);
+		regs.pc = (short)(pc+2);
+	}
 	
 	final class ABSX implements AddressMode {
 		public void foo() {
-			addr = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
-			addr += (short)(regs.x & 0xFF);
-			regs.pc += 2;
+			am_absx();
 		}
 	} final ABSX absx = new ABSX();
+	private void am_absx() {
+		addr = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
+		addr += (short)(regs.x & 0xFF);
+		regs.pc += 2;
+	}
 	
 	final class ABSY implements AddressMode {
 		public void foo() {
-			addr = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
-			addr += (short)(regs.y & 0xFF);
-			regs.pc += 2;
+			am_absy();
 		}
 	} final ABSY absy = new ABSY();
+	private void am_absy() {
+		addr = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
+		addr += (short)(regs.y & 0xFF);
+		regs.pc += 2;
+	}
 	
 	final class IABS implements AddressMode {
 		public void foo() {
-			int star_pc = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
-			addr = theFleurDeLisDriver.getWord(star_pc & 0xFFFF);
-			regs.pc += 2;
+			am_iabs();
 		} 
 	} final IABS iabs = new IABS();
+	private void am_iabs() {
+		int star_pc = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
+		addr = theFleurDeLisDriver.getWord(star_pc & 0xFFFF);
+		regs.pc += 2;
+	}
 	
 	final class INDX implements AddressMode { // LDA ($F0,X)
 		public void foo() {
-			int k = (int)(theFleurDeLisDriver.getByte(regs.pc&0xFFFF)&0xFF
-					+ (int)(regs.x&0xFF))&0xFFFF;
-			addr = theFleurDeLisDriver.getWord(k);
-			regs.pc++;
+			am_indx();
 		}
 	} final INDX indx = new INDX();
+	private void am_indx() {
+		int k = (int)(theFleurDeLisDriver.getByte(regs.pc&0xFFFF)&0xFF
+				+ (int)(regs.x&0xFF))&0xFFFF;
+		addr = theFleurDeLisDriver.getWord(k);
+		regs.pc++;
+	}
 	
 	final class INDY implements AddressMode {
 		public void foo() {
-			int k = ((int)(regs.pc)) & 0x0000FFFF;
-			
-			addr = theFleurDeLisDriver.getWord(
-					theFleurDeLisDriver.getByte(k)&0x000000FF)
-					+ (short)(regs.y & 0xFF);
-			addr = addr & 0x0000FFFF;
-			regs.pc++;
+			am_indy();
 		}
 	} final INDY indy = new INDY();
+	private void am_indy() {
+		int k = ((int)(regs.pc)) & 0x0000FFFF;
+		addr = theFleurDeLisDriver.getWord(
+				theFleurDeLisDriver.getByte(k)&0x000000FF)
+				+ (short)(regs.y & 0xFF);
+		addr = addr & 0x0000FFFF;
+		regs.pc++;
+	}
 	
 	final class ZPG implements AddressMode {
 		public void foo() {
-			int pc = ((int)regs.pc) & 0x0000FFFF;
-			addr = theFleurDeLisDriver.getByte(pc);
-			addr &= 0x000000FF; // Zero page, addr should be 00 to FF /* &=0000FFFF */
-			regs.pc += 1;
+			am_zpg();
 		}
 	}
 	final ZPG zpg = new ZPG();
+	private void am_zpg() {
+		int pc = ((int)regs.pc) & 0x0000FFFF;
+		addr = theFleurDeLisDriver.getByte(pc);
+		addr &= 0x000000FF; // Zero page, addr should be 00 to FF /* &=0000FFFF */
+		regs.pc += 1;
+	}
 	
 	final class ZPGX implements AddressMode {
 		public void foo() {
-			int reg_plus_x = (regs.pc&0xFFFF);
-			addr = theFleurDeLisDriver.getByte(reg_plus_x&0xFFFF) + (regs.x&0xFF);
-			addr &= 0xFF;
-			regs.pc+=1;
+			am_zpgx();
 		}
 	} final ZPGX zpgx = new ZPGX();
+	private void am_zpgx() {
+		int reg_plus_x = (regs.pc&0xFFFF);
+		addr = theFleurDeLisDriver.getByte(reg_plus_x&0xFFFF) + (regs.x&0xFF);
+		addr &= 0xFF;
+		regs.pc+=1;
+	}	
 	
 	final class ZPGY implements AddressMode {
 		public void foo() {
-			int reg_plus_y = regs.pc&0xFFFF;
-			addr = theFleurDeLisDriver.getByte(reg_plus_y) + (regs.y&0xFF);
-			addr &= 0xFF;
-			regs.pc+=1;
+			am_zpgy();
 		}
 	} final ZPGY zpgy = new ZPGY();
+	private void am_zpgy() {
+		int reg_plus_y = regs.pc&0xFFFF;
+		addr = theFleurDeLisDriver.getByte(reg_plus_y) + (regs.y&0xFF);
+		addr &= 0xFF;
+		regs.pc+=1;
+	}
 	
 	final class REL implements AddressMode {
 		public void foo() {
-			pc = ((int)regs.pc) & 0x0000FFFF;
-			addr = (int)(char)theFleurDeLisDriver.getByte(pc);
-			addr &= 0x0000FFFF;
-			regs.pc = (short)(pc+1);
+			am_rel();
 		}
 	} final REL rel = new REL();
+	private void am_rel() {
+		pc = ((int)regs.pc) & 0x0000FFFF;
+		addr = (int)(char)theFleurDeLisDriver.getByte(pc);
+		addr &= 0x0000FFFF;
+		regs.pc = (short)(pc+1);
+	}
 	
 	final class IMM implements AddressMode { 
-		public void foo(){addr = ((int)regs.pc++) & 0x0000FFFF;} }
+		public void foo(){am_imm();} }
 	final IMM imm = new IMM();
-	
+	private void am_imm() {
+		addr = ((int)regs.pc++) & 0x0000FFFF;
+	}
 	
 	// #################
 	// Instructions
@@ -470,7 +510,7 @@ public class CPU {
 			regs.pc += 1;
 			push.foo((byte)(regs.pc >> 8));
 			push.foo((byte)(regs.pc & 0xFF));
-			ef_to_af.foo();
+			ef_to_af();
 			regs.ps |= AF_BREAK;
 			push.foo(regs.ps);
 			regs.ps |= AF_INTERRUPT;
@@ -634,7 +674,7 @@ public class CPU {
 	} final PLP plp = new PLP();
 	
 	final private class PHP implements InstName { public void foo() {
-		ef_to_af.foo();
+		ef_to_af();
 		regs.ps |= AF_RESERVED;
 		push.foo(regs.ps);
 		}
@@ -776,7 +816,7 @@ public class CPU {
 			push.foo((byte)(regs.pc >> 8));
 			push.foo((byte)(regs.pc & 0xFF));
 			sei.foo();
-			ef_to_af.foo();
+			ef_to_af();
 			push.foo(regs.ps);
 			regs.pc = theFleurDeLisDriver.getWord(0xFFFA);
 			nmi = true;
@@ -790,7 +830,7 @@ public class CPU {
 			if((regs.ps & AF_INTERRUPT)==0) {
 				push.foo((byte)(regs.pc >> 8));
 				push.foo((byte)(regs.pc & 0xFF));
-				ef_to_af.foo();
+				ef_to_af();
 				regs.ps &= ~AF_BREAK;
 				push.foo(regs.ps);
 				regs.pc = theFleurDeLisDriver.getWord(0xFFFE);
@@ -802,7 +842,6 @@ public class CPU {
 	
 	// Totally copied from BanXian's code.
 	final public int oneInstruction() throws Exception {
-		short temp, val;
 		
 		cycles = 0;
 		if(total_inst_count == 123225) {
@@ -823,17 +862,17 @@ public class CPU {
 		byte opcode = theFleurDeLisDriver.getByte(pc);
 		switch(opcode) {
 		case (byte)0x00: // BRK
-			am(null);exec(brk);cyc.foo(7);break;
+			/*am(null);*/exec(brk);cyc.foo(7);break;
 		case (byte)0x01:
-			am(indx); exec(ora); cyc.foo(6); break;
+			am_indx(); exec(ora); cyc.foo(6); break;
 		case (byte)0x03: // INVALID1
-			am(null); cyc.foo(1); break;
+			/*am(null);*/ cyc.foo(1); break;
 		case (byte)0x05: // ORA $12
-			am(zpg); exec(ora); cyc.foo(3); break;
+			am_zpg(); exec(ora); cyc.foo(3); break;
 		case (byte)0x06: // Zpg ASL; ASL $56
-			am(zpg); exec(asl); cyc.foo(5); break;
+			am_zpg(); exec(asl); cyc.foo(5); break;
 		case (byte)0x08: // PHP
-			am(null); exec(php);cyc.foo(3); break;
+			exec(php);cyc.foo(3); break;
 		case (byte)0x09: // ORA #$12
 			am(imm); exec(ora); cyc.foo(2); break;
 		case (byte)0x0A:
@@ -1131,7 +1170,7 @@ public class CPU {
 			}
 		}
 		
-		ef_to_af.foo();
+		ef_to_af();
 		total_inst_count++;
 
 		// 1.5. Input test
