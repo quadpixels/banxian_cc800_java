@@ -1,6 +1,13 @@
 /** Update log goes here!
  * Nov 22: Ah! I have some interrupts!
  *   10:40 PM Start to implement interrupts.
+ * Dec 21: Looks like 80% functionalities are working OK.
+ *   Now need to move on to perform optimization.
+ *   The first thing I can think of is to reduce function invocation overhead,
+ *   that is instead of using fancy function objects, use just method calls,
+ *   for example, ef_to_af.foo() ------> ef_to_af()
+ *   Debug features would have to be preserved, because this is intended to be 
+ *     a project for learning.
  */
 
 package org.quadpixels;
@@ -96,10 +103,10 @@ public class CPU {
 		// 1. Log the operand.
 		{
 			int p = prev_pc + 1;
-			if(this_addr_mode == null) operand_log="";
+			if(this_addr_mode.equals("")) operand_log="";
 			else {
-				if(this_addr_mode instanceof ABS ||  // The beauty and ugliness of
-					this_addr_mode instanceof ZPG) { // O.O.P. !!!
+				if(this_addr_mode.equals("ABS") ||  // The beauty and ugliness of
+					this_addr_mode.equals("ZPG")) { // O.O.P. !!!
 					while((short)(p&0xFFFF) != regs.pc) {
 						int addr = ((int)(p)) & 0xFFFF;
 						sb_operand.insert(0, String.format("%02X", theFleurDeLisDriver.getByte(addr)));
@@ -107,12 +114,12 @@ public class CPU {
 					}
 					sb_operand.insert(0, "$");
 				} 
-				else if(this_addr_mode instanceof IMM) {
+				else if(this_addr_mode.equals("IMM")) {
 					sb_operand.append("#$");
 					int addr = ((int)(p)) & 0xFFFF;
 					sb_operand.append(String.format("%02X", theFleurDeLisDriver.getByte(addr)));
 				}
-				else if(this_addr_mode instanceof REL) {
+				else if(this_addr_mode.equals("REL")) {
 					sb_operand.append("$");
 					// PC has NOT been incremented by calling exec() yet,
 					//    that being said, logOperand() must precede exec()!!!\
@@ -120,29 +127,29 @@ public class CPU {
 					int addr = (int)(char)theFleurDeLisDriver.getByte(pc);
 					sb_operand.append(String.format("%04X", (regs.pc + addr)&0x0000FFFF));
 				}
-				else if(this_addr_mode instanceof IABS) { // JMP $(00BA)
+				else if(this_addr_mode.equals("IABS")) { // JMP $(00BA)
 					sb_operand.append("$(");
 					int pc = ((int)p) & 0x0000FFFF;
 					int addr = (int)(theFleurDeLisDriver.getWord(pc&0xFFFF)&0xFFFF);
 					sb_operand.append(String.format("$04X)", addr));
 				}
-				else if(this_addr_mode instanceof INDY) { // STA ($08),Y
+				else if(this_addr_mode.equals("INDY")) { // STA ($08),Y
 					sb_operand.append("($");
 					int pc = ((int)p) & 0x0000FFFF;
 					int addr = (int)(char)theFleurDeLisDriver.getByte(pc) & 0xFF;
 					sb_operand.append(String.format("%02X),Y", addr));
 				}
-				else if(this_addr_mode instanceof ABSX) { // STA $9999, X
+				else if(this_addr_mode.equals("ABSX")) { // STA $9999, X
 					sb_operand.append("$");
 					int addr = (int)(short)theFleurDeLisDriver.getWord(regs.pc&0xFFFF) & 0xFFFF;
 					sb_operand.append(String.format("%04X,X", addr));
 				}
-				else if(this_addr_mode instanceof ABSY) { // STA $9999, X
+				else if(this_addr_mode.equals("ABSY")) { // STA $9999, X
 					sb_operand.append("$");
 					int addr = (int)(short)theFleurDeLisDriver.getWord(p&0xFFFF) & 0xFFFF;
 					sb_operand.append(String.format("%04X,Y", addr));
 				}
-				else if(this_addr_mode instanceof ZPGX) { // STA $70,X
+				else if(this_addr_mode.equals("ZPGX")) { // STA $70,X
 					sb_operand.append("$");
 					int addr = (int)(char)theFleurDeLisDriver.getByte(p&0xFFFF)&0xFF;
 					sb_operand.append(String.format("%02X,X", addr));
@@ -162,7 +169,7 @@ public class CPU {
 	}
 	private void logInst() {
 		StringBuilder sb = new StringBuilder();
-		String inst_name = this_inst.getClass().getName();
+		String inst_name = this_inst;
 		int idx = inst_name.lastIndexOf('$');
 		inst_name = inst_name.substring(idx+1);
 		sb.append(inst_name + " ");
@@ -238,27 +245,12 @@ public class CPU {
 	// ###################################
 	// Flags
 	// ###################################
-	final class AF_TO_EF {
-		void foo() {
-			flag_c = ((regs.ps & AF_CARRY)==AF_CARRY);
-			flag_n = ((regs.ps & AF_SIGN)==AF_SIGN);
-			flag_v = ((regs.ps & AF_OVERFLOW)==AF_OVERFLOW);
-			flag_z = ((regs.ps & AF_ZERO) == AF_ZERO);
-		}
+	void af_to_ef() {
+		flag_c = ((regs.ps & AF_CARRY)==AF_CARRY);
+		flag_n = ((regs.ps & AF_SIGN)==AF_SIGN);
+		flag_v = ((regs.ps & AF_OVERFLOW)==AF_OVERFLOW);
+		flag_z = ((regs.ps & AF_ZERO) == AF_ZERO);
 	}
-	final AF_TO_EF af_to_ef = new AF_TO_EF();
-	
-	final class EF_TO_AF {
-		void foo() {
-			regs.ps = (byte) (regs.ps & ~(AF_CARRY | AF_SIGN | AF_OVERFLOW 
-					| AF_ZERO));
-			if(flag_c == true) regs.ps |= AF_CARRY;
-			if(flag_n == true) regs.ps |= AF_SIGN;
-			if(flag_v == true) regs.ps |= AF_OVERFLOW;
-			if(flag_z == true) regs.ps |= AF_ZERO;
-		}
-	}
-	//final EF_TO_AF ef_to_af = new EF_TO_AF();
 	
 	private void ef_to_af() {
 		regs.ps = (byte) (regs.ps & ~(AF_CARRY | AF_SIGN | AF_OVERFLOW 
@@ -293,78 +285,60 @@ public class CPU {
 	// #################
 	// Addressing modes
 	// #################
-	interface AddressMode { abstract void foo(); }
-	private AddressMode this_addr_mode;
-	// the "am" method just works as a driver, and it's pretty handy to hook a
-	//  debugging stmt here.
-	private void am(AddressMode _am) {
-		this_addr_mode = _am; 
-		if(_am != null) {_am.foo();}
-		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP)
-			logOperandAndMachineCode();
-	}
-	final class ABS implements AddressMode {
-		public void foo() {
-			am_abs();
-		}
-	}
-	final ABS abs = new ABS();
+	private String this_addr_mode;
+	
 	private void am_abs() {
 		pc = ((int)regs.pc) & 0x0000FFFF;
 		addr = theFleurDeLisDriver.getWord(pc);
 		regs.pc = (short)(pc+2);
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "ABS";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class ABSX implements AddressMode {
-		public void foo() {
-			am_absx();
-		}
-	} final ABSX absx = new ABSX();
+	
 	private void am_absx() {
 		addr = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
 		addr += (short)(regs.x & 0xFF);
 		regs.pc += 2;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "ABSX";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class ABSY implements AddressMode {
-		public void foo() {
-			am_absy();
-		}
-	} final ABSY absy = new ABSY();
 	private void am_absy() {
 		addr = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
 		addr += (short)(regs.y & 0xFF);
 		regs.pc += 2;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "ABSY";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class IABS implements AddressMode {
-		public void foo() {
-			am_iabs();
-		} 
-	} final IABS iabs = new IABS();
 	private void am_iabs() {
 		int star_pc = theFleurDeLisDriver.getWord(regs.pc & 0xFFFF);
 		addr = theFleurDeLisDriver.getWord(star_pc & 0xFFFF);
 		regs.pc += 2;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "IABS";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class INDX implements AddressMode { // LDA ($F0,X)
-		public void foo() {
-			am_indx();
-		}
-	} final INDX indx = new INDX();
 	private void am_indx() {
 		int k = (int)(theFleurDeLisDriver.getByte(regs.pc&0xFFFF)&0xFF
 				+ (int)(regs.x&0xFF))&0xFFFF;
 		addr = theFleurDeLisDriver.getWord(k);
 		regs.pc++;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "INDX";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class INDY implements AddressMode {
-		public void foo() {
-			am_indy();
-		}
-	} final INDY indy = new INDY();
 	private void am_indy() {
 		int k = ((int)(regs.pc)) & 0x0000FFFF;
 		addr = theFleurDeLisDriver.getWord(
@@ -372,71 +346,78 @@ public class CPU {
 				+ (short)(regs.y & 0xFF);
 		addr = addr & 0x0000FFFF;
 		regs.pc++;
-	}
-	
-	final class ZPG implements AddressMode {
-		public void foo() {
-			am_zpg();
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "INDY";
+			logOperandAndMachineCode();
 		}
 	}
-	final ZPG zpg = new ZPG();
+	
 	private void am_zpg() {
 		int pc = ((int)regs.pc) & 0x0000FFFF;
 		addr = theFleurDeLisDriver.getByte(pc);
 		addr &= 0x000000FF; // Zero page, addr should be 00 to FF /* &=0000FFFF */
 		regs.pc += 1;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "ZPG";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class ZPGX implements AddressMode {
-		public void foo() {
-			am_zpgx();
-		}
-	} final ZPGX zpgx = new ZPGX();
 	private void am_zpgx() {
 		int reg_plus_x = (regs.pc&0xFFFF);
 		addr = theFleurDeLisDriver.getByte(reg_plus_x&0xFFFF) + (regs.x&0xFF);
 		addr &= 0xFF;
 		regs.pc+=1;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "ZPGX";
+			logOperandAndMachineCode();
+		}
 	}	
 	
-	final class ZPGY implements AddressMode {
-		public void foo() {
-			am_zpgy();
-		}
-	} final ZPGY zpgy = new ZPGY();
 	private void am_zpgy() {
 		int reg_plus_y = regs.pc&0xFFFF;
 		addr = theFleurDeLisDriver.getByte(reg_plus_y) + (regs.y&0xFF);
 		addr &= 0xFF;
 		regs.pc+=1;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "ZPGY";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class REL implements AddressMode {
-		public void foo() {
-			am_rel();
-		}
-	} final REL rel = new REL();
 	private void am_rel() {
 		pc = ((int)regs.pc) & 0x0000FFFF;
 		addr = (int)(char)theFleurDeLisDriver.getByte(pc);
 		addr &= 0x0000FFFF;
 		regs.pc = (short)(pc+1);
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "REL";
+			logOperandAndMachineCode();
+		}
 	}
 	
-	final class IMM implements AddressMode { 
-		public void foo(){am_imm();} }
-	final IMM imm = new IMM();
 	private void am_imm() {
 		addr = ((int)regs.pc++) & 0x0000FFFF;
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "IMM";
+			logOperandAndMachineCode();
+		}
+	}
+	
+	private void am_null() {
+		if(TommyHelper.IS_LOG_MEM == 1 && total_inst_count > TommyHelper.NUM_INSTS_SKIP) {
+			this_addr_mode = "";
+			logOperandAndMachineCode();
+		}
 	}
 	
 	// #################
 	// Instructions
 	// #################
 	interface InstName { abstract void foo(); }
-	private InstName this_inst;
+	private String this_inst;
 	void exec(InstName inst) {
-		this_inst = inst;
+		this_inst = inst.getClass().getName();
 		inst.foo();
 	}
 	
@@ -619,18 +600,21 @@ public class CPU {
 	private void lda() {
 		regs.a = read.foo();
 		setnz.foo(regs.a);
-		this_inst = lda;
+		this_inst = "LDA";
 	}
 	
 	private void bvc() {
 		if(flag_v==false) regs.pc += addr; cyc.foo(1);
+		this_inst = "BVC";
 	}
 	
-	private void clv() { flag_v=false; }
+	private void clv() { flag_v=false; this_inst="CLV"; }
 	
-	final private class LDX implements InstName { public void foo() {regs.x = read.foo();
-			setnz.foo(regs.x); }}
-	final LDX ldx = new LDX();
+	private void ldx() {
+		regs.x = read.foo();
+		setnz.foo(regs.x); 
+		this_inst="LDX";
+	}
 	
 	final private class LDY implements InstName { public void foo() {regs.y = read.foo();
 	setnz.foo(regs.y); }}
@@ -670,7 +654,7 @@ public class CPU {
 	} final PLA pla = new PLA();
 	
 	final private class PLP implements InstName { public void foo() {
-		regs.ps = pop.foo(); af_to_ef.foo(); }
+		regs.ps = pop.foo(); af_to_ef(); }
 	} final PLP plp = new PLP();
 	
 	final private class PHP implements InstName { public void foo() {
@@ -718,7 +702,7 @@ public class CPU {
 	final private class RTI implements InstName { public void foo() {
 			regs.ps = pop.foo(); 
 			cli.foo(); irq = true;
-			af_to_ef.foo();
+			af_to_ef();
 			regs.pc = (short)(pop.foo()&0x00FF);
 			regs.pc |= (pop.foo() << 8);
 		}
@@ -855,302 +839,302 @@ public class CPU {
 			logRegisters();
 		} 
 		
-		af_to_ef.foo();
+		af_to_ef();
 		
 		pc = ((int)regs.pc) & 0x0000FFFF; // Always keep it unsigned
 		regs.pc = (short)(pc+1); // So that we don't mess up with signed/unsigned
 		byte opcode = theFleurDeLisDriver.getByte(pc);
 		switch(opcode) {
 		case (byte)0x00: // BRK
-			/*am(null);*/exec(brk);cyc.foo(7);break;
+			am_null(); exec(brk);cyc.foo(7);break;
 		case (byte)0x01:
 			am_indx(); exec(ora); cyc.foo(6); break;
 		case (byte)0x03: // INVALID1
-			/*am(null);*/ cyc.foo(1); break;
+			am_null(); cyc.foo(1); break;
 		case (byte)0x05: // ORA $12
 			am_zpg(); exec(ora); cyc.foo(3); break;
 		case (byte)0x06: // Zpg ASL; ASL $56
 			am_zpg(); exec(asl); cyc.foo(5); break;
 		case (byte)0x08: // PHP
-			exec(php);cyc.foo(3); break;
+			am_null(); exec(php);cyc.foo(3); break;
 		case (byte)0x09: // ORA #$12
-			am(imm); exec(ora); cyc.foo(2); break;
+			am_imm(); exec(ora); cyc.foo(2); break;
 		case (byte)0x0A:
-			am(null);exec(asla);cyc.foo(2);break;
+			am_null(); exec(asla);cyc.foo(2);break;
 		case (byte)0x0D:
-			am(abs); exec(ora); cyc.foo(4); break;
+			am_abs(); exec(ora); cyc.foo(4); break;
 		case (byte)0x0E:
-			am(abs); exec(asl); cyc.foo(6); break;
+			am_abs(); exec(asl); cyc.foo(6); break;
 		case (byte)0x10: // 
-			am(rel); exec(bpl); cyc.foo(2); break;
+			am_rel(); exec(bpl); cyc.foo(2); break;
 		case (byte)0x11:
-			am(indy); exec(ora); cyc.foo(4); break;
+			am_indy(); exec(ora); cyc.foo(4); break;
 		case (byte)0x15:
-			am(zpgx); exec(ora); cyc.foo(4); break;
+			am_zpgx(); exec(ora); cyc.foo(4); break;
 		case (byte)0x18:
-			am(null);exec(clc);cyc.foo(2); break;
+			am_null(); exec(clc);cyc.foo(2); break;
 		case (byte)0x19:
-			am(absy); exec(ora); cyc.foo(4); break;
+			am_absy(); exec(ora); cyc.foo(4); break;
 		case (byte)0x1D: 
-			am(absx); exec(ora); cyc.foo(4); break;
+			am_absx(); exec(ora); cyc.foo(4); break;
 		case (byte)0x1E:
-			am(absx); exec(asl); cyc.foo(6); break;
+			am_absx(); exec(asl); cyc.foo(6); break;
 		case (byte)0x20: // JSR $1234
-			am(abs); exec(jsr); cyc.foo(6); break;
+			am_abs(); exec(jsr); cyc.foo(6); break;
 		case (byte)0x21:
-			am(indx);exec(and); cyc.foo(6); break;
+			am_indx();exec(and); cyc.foo(6); break;
 		case (byte)0x24: // BIT $63
-			am(zpg); exec(bit); cyc.foo(3); break;
+			am_zpg(); exec(bit); cyc.foo(3); break;
 		case (byte)0x25: // ZPG AND
-			am(zpg); exec(and); cyc.foo(3); break;
+			am_zpg(); exec(and); cyc.foo(3); break;
 		case (byte)0x26: // ROL $60
-			am(zpg); exec(rol); cyc.foo(5); break;
+			am_zpg(); exec(rol); cyc.foo(5); break;
 		case (byte)0x28: // PLP
-			am(null); exec(plp); cyc.foo(4); break;
+			am_null(); exec(plp); cyc.foo(4); break;
 		case (byte)0x29: // Imm AND
-			am(imm); exec(and); cyc.foo(2); break;
+			am_imm(); exec(and); cyc.foo(2); break;
 		case (byte)0x2A:
-			am(null);exec(rola);cyc.foo(2); break;
+			am_null(); exec(rola);cyc.foo(2); break;
 		case (byte)0x2C: // Abs BIT
-			am(abs); exec(bit); cyc.foo(4); break;
+			am_abs(); exec(bit); cyc.foo(4); break;
 		case (byte)0x2D:
-			am(abs); exec(and); cyc.foo(4); break;
+			am_abs(); exec(and); cyc.foo(4); break;
 		case (byte)0x2E: // ROL
-			am(abs); exec(rol); cyc.foo(6); break;
+			am_abs(); exec(rol); cyc.foo(6); break;
 		case (byte)0x30: // BMI
-			am(rel); exec(bmi); cyc.foo(2); break;
+			am_rel(); exec(bmi); cyc.foo(2); break;
 		case (byte)0x31:
-			am(indy); exec(and); cyc.foo(5); break;
+			am_indy(); exec(and); cyc.foo(5); break;
 		case (byte)0x35:
-			am(zpgx); exec(and); cyc.foo(4); break;
+			am_zpgx(); exec(and); cyc.foo(4); break;
 		case (byte)0x38:
-			am(null);exec(sec); cyc.foo(2); break;
+			am_null(); exec(sec); cyc.foo(2); break;
 		case (byte)0x39:
-			am(absy); exec(and); cyc.foo(4); break;
+			am_absy(); exec(and); cyc.foo(4); break;
 		case (byte)0x3D:
-			am(absx); exec(and); cyc.foo(4); break;
+			am_absx(); exec(and); cyc.foo(4); break;
 		case (byte)0x3E:
-			am(absx); exec(rol); cyc.foo(6); break;
+			am_absx(); exec(rol); cyc.foo(6); break;
 		case (byte)0x40:
-			am(null);exec(rti); cyc.foo(6); break;
+			am_null(); exec(rti); cyc.foo(6); break;
 		case (byte)0x45:
-			am(zpg); exec(eor); cyc.foo(3); break;
+			am_zpg(); exec(eor); cyc.foo(3); break;
 		case (byte)0x46:
-			am(zpg); exec(lsr); cyc.foo(5); break;
+			am_zpg(); exec(lsr); cyc.foo(5); break;
 		case (byte)0x48:
-			am(null);exec(pha); cyc.foo(3); break;
+			am_null(); exec(pha); cyc.foo(3); break;
 		case (byte)0x49:
-			am(imm); exec(eor); cyc.foo(3); break;
+			am_imm(); exec(eor); cyc.foo(3); break;
 		case (byte)0x4A:
-			am(null); exec(lsra); cyc.foo(2); break;
+			am_null(); exec(lsra); cyc.foo(2); break;
 		case (byte)0x4C: // Abs JMP; e.g. JMP $E77E
-			am(abs); exec(jmp); cyc.foo(3); break;
+			am_abs(); exec(jmp); cyc.foo(3); break;
 		case (byte)0x4D:
-			am(abs); exec(eor); cyc.foo(4); break;
+			am_abs(); exec(eor); cyc.foo(4); break;
 		case (byte)0x4E:
-			am(abs); exec(lsr); cyc.foo(6); break;
+			am_abs(); exec(lsr); cyc.foo(6); break;
 		case (byte)0x50:
-			am(rel); bvc(); cyc.foo(1); break;
+			am_rel(); bvc(); cyc.foo(1); break;
 		case (byte)0x51:
-			am(indy); exec(eor); cyc.foo(5); break;
+			am_indy(); exec(eor); cyc.foo(5); break;
 		case (byte)0x55:
-			am(zpgx); exec(eor); cyc.foo(4); break;
+			am_zpgx(); exec(eor); cyc.foo(4); break;
 		case (byte)0x56:
-			am(zpgx); exec(lsr); cyc.foo(6); break;
+			am_zpgx(); exec(lsr); cyc.foo(6); break;
 		case (byte)0x58:
-			am(null);exec(cli); cyc.foo(2); break;
+			am_null(); exec(cli); cyc.foo(2); break;
 		case (byte)0x59:
-			am(absy); exec(eor); cyc.foo(4); break;
+			am_absy(); exec(eor); cyc.foo(4); break;
 		case (byte)0x60: // RTS
-			am(null);exec(rts); cyc.foo(6); break;
+			am_null(); exec(rts); cyc.foo(6); break;
 		case (byte)0x61:
-			am(indx); exec(adc); cyc.foo(6); break;
+			am_indx(); exec(adc); cyc.foo(6); break;
 		case (byte)0x65: // ADC $5F
-			am(zpg); exec(adc); cyc.foo(3); break;
+			am_zpg(); exec(adc); cyc.foo(3); break;
 		case (byte)0x66:
-			am(zpg); exec(ror); cyc.foo(5); break;
+			am_zpg(); exec(ror); cyc.foo(5); break;
 		case (byte)0x68:
-			am(null);exec(pla); cyc.foo(4); break;
+			am_null(); exec(pla); cyc.foo(4); break;
 		case (byte)0x69:
-			am(imm); exec(adc); cyc.foo(2); break;
+			am_imm(); exec(adc); cyc.foo(2); break;
 		case (byte)0x6A: // RORA
-			am(null);exec(rora);cyc.foo(2); break;
+			am_null(); exec(rora);cyc.foo(2); break;
 		case (byte)0x6C:
-			am(iabs);exec(jmp);cyc.foo(6); break;
+			am_iabs();exec(jmp);cyc.foo(6); break;
 		case (byte)0x6D:
-			am(abs); exec(adc); cyc.foo(4); break;
+			am_abs(); exec(adc); cyc.foo(4); break;
 		case (byte)0x6E:
-			am(abs); exec(ror); cyc.foo(6); break;
+			am_abs(); exec(ror); cyc.foo(6); break;
 		case (byte)0x70:
-			am(rel); exec(bvs); cyc.foo(2); break;
+			am_rel(); exec(bvs); cyc.foo(2); break;
 		case (byte)0x71:
-			am(indy);exec(adc); cyc.foo(5); break;
+			am_indy();exec(adc); cyc.foo(5); break;
 		case (byte)0x75:
-			am(zpgx); exec(adc); cyc.foo(4); break;
+			am_zpgx(); exec(adc); cyc.foo(4); break;
 		case (byte)0x76:
-			am(zpgx); exec(ror); cyc.foo(6); break;
+			am_zpgx(); exec(ror); cyc.foo(6); break;
 		case (byte)0x78: // SEI; sets interruption flag
-			am(null);exec(sei); cyc.foo(2); break;
+			am_null(); exec(sei); cyc.foo(2); break;
 		case (byte)0x79:
-			am(absy);exec(adc);cyc.foo(4); break;
+			am_absy();exec(adc);cyc.foo(4); break;
 		case (byte)0x7D:
-			am(absx); exec(adc); cyc.foo(4); break;
+			am_absx(); exec(adc); cyc.foo(4); break;
 		case (byte)0x7E:
-			am(absx); exec(ror); cyc.foo(6); break;
+			am_absx(); exec(ror); cyc.foo(6); break;
 		case (byte)0x81:
-			am(indx); exec(sta); cyc.foo(6); break;
+			am_indx(); exec(sta); cyc.foo(6); break;
 		case (byte)0x84: // ZPG STY
-			am(zpg); exec(sty); cyc.foo(3); break;
+			am_zpg(); exec(sty); cyc.foo(3); break;
 		case (byte)0x85: // Zpg STA; e.g. STA $0A
-			am(zpg); exec(sta); cyc.foo(3); break;
+			am_zpg(); exec(sta); cyc.foo(3); break;
 		case (byte)0x86: // ZPG STX
-			am(zpg); exec(stx); cyc.foo(3); break;
+			am_zpg(); exec(stx); cyc.foo(3); break;
 		case (byte)0x88: // DEY
-			am(null);exec(dey); cyc.foo(2); break;
+			am_null(); exec(dey); cyc.foo(2); break;
 		case (byte)0x8A: // TXA
-			am(null);exec(txa);cyc.foo(2); break;
+			am_null(); exec(txa);cyc.foo(2); break;
 		case (byte)0x8C:
-			am(abs); exec(sty); cyc.foo(4); break;
+			am_abs(); exec(sty); cyc.foo(4); break;
 		case (byte)0x8D: // Abs STA; e.g. STA $0489
-			am(abs); exec(sta); cyc.foo(4); break;
+			am_abs(); exec(sta); cyc.foo(4); break;
 		case (byte)0x8E:
-			am(abs); exec(stx); cyc.foo(4); break;
+			am_abs(); exec(stx); cyc.foo(4); break;
 		case (byte)0x90: // BCC
-			am(rel); exec(bcc); cyc.foo(2); break;
+			am_rel(); exec(bcc); cyc.foo(2); break;
 		case (byte)0x91: // INDY STA
-			am(indy);exec(sta); cyc.foo(6); break;
+			am_indy();exec(sta); cyc.foo(6); break;
 		case (byte)0x94: // ZPGX STY
-			am(zpgx); exec(sty); cyc.foo(4); break;
+			am_zpgx(); exec(sty); cyc.foo(4); break;
 		case (byte)0x95:
-			am(zpgx); exec(sta); cyc.foo(4); break;
+			am_zpgx(); exec(sta); cyc.foo(4); break;
 		case (byte)0x98:
-			am(null);exec(tya);cyc.foo(2); break;
+			am_null(); exec(tya);cyc.foo(2); break;
 		case (byte)0x99:
-			am(absy);exec(sta); cyc.foo(5); break;
+			am_absy();exec(sta); cyc.foo(5); break;
 		case (byte)0x9A:
-			am(null);exec(txs); cyc.foo(2); break;
+			am_null(); exec(txs); cyc.foo(2); break;
 		case (byte)0x9D:
-			am(absx);exec(sta); cyc.foo(5); break;
+			am_absx();exec(sta); cyc.foo(5); break;
 		case (byte)0xA0: // LDY #$08
-			am(imm); exec(ldy); cyc.foo(2); break;
+			am_imm(); exec(ldy); cyc.foo(2); break;
 		case (byte)0xA1: // INDX LDA
-			am(indx); lda(); cyc.foo(6); break;
+			am_indx(); lda(); cyc.foo(6); break;
 		case (byte)0xA2: // Imm LDX
-			am(imm); exec(ldx); cyc.foo(2); break;
+			am_imm(); ldx(); cyc.foo(2); break;
 		case (byte)0xA4:
-			am(zpg); exec(ldy); cyc.foo(3); break;
+			am_zpg(); exec(ldy); cyc.foo(3); break;
 		case (byte)0xA5:
-			am(zpg); lda(); ; cyc.foo(3); break;
+			am_zpg(); lda(); ; cyc.foo(3); break;
 		case (byte)0xA6:
-			am(zpg); exec(ldx); cyc.foo(3); break;
+			am_zpg(); ldx(); cyc.foo(3); break;
 		case (byte)0xA8:
-			am(null); exec(tay); cyc.foo(2); break;
+			am_null();  exec(tay); cyc.foo(2); break;
 		case (byte)0xA9: // Imm LDA; e.g. LDA #$00
-			am(imm); lda(); cyc.foo(2); break;
+			am_imm(); lda(); cyc.foo(2); break;
 		case (byte)0xAA:
-			am(null); exec(tax); cyc.foo(2); break;
+			am_null(); exec(tax); cyc.foo(2); break;
 		case (byte)0xAC: // Abs LDY
-			am(abs); exec(ldy); cyc.foo(4); break;
+			am_abs(); exec(ldy); cyc.foo(4); break;
 		case (byte)0xAD: // Abs LDA; e.g. LDA $04BB
-			am(abs); lda(); cyc.foo(4); break;
+			am_abs(); lda(); cyc.foo(4); break;
 		case (byte)0xAE: // Abs LDX
-			am(abs); exec(ldx); cyc.foo(4); break;
+			am_abs(); ldx(); cyc.foo(4); break;
 		case (byte)0xB0: // BCS
-			am(rel); exec(bcs); cyc.foo(2); break;
+			am_rel(); exec(bcs); cyc.foo(2); break;
 		case (byte)0xB1: // INDY LDA
-			am(indy); lda(); cyc.foo(5); break;
+			am_indy(); lda(); cyc.foo(5); break;
 		case (byte)0xB4:
-			am(zpgx); exec(ldy); cyc.foo(4); break;
+			am_zpgx(); exec(ldy); cyc.foo(4); break;
 		case (byte)0xB5:
-			am(zpgx); lda(); cyc.foo(4); break;
+			am_zpgx(); lda(); cyc.foo(4); break;
 		case (byte)0xB6:
-			am(zpgy); exec(ldx); cyc.foo(4); break;
+			am_zpgy(); ldx(); cyc.foo(4); break;
 		case (byte)0xB8:
-			am(null); clv(); cyc.foo(1); break;
+			am_null(); clv(); cyc.foo(1); break;
 		case (byte)0xB9: // LDA $1000, Y
-			am(absy); lda(); cyc.foo(4); break;
+			am_absy(); lda(); cyc.foo(4); break;
 		case (byte)0xBA: // TSX
-			am(null); exec(tsx); cyc.foo(4); break;
+			am_null();  exec(tsx); cyc.foo(4); break;
 		case (byte)0xBC:
-			am(absx); exec(ldy); cyc.foo(4); break;
+			am_absx(); exec(ldy); cyc.foo(4); break;
 		case (byte)0xBD: // ABSX LDA
-			am(absx); lda(); cyc.foo(4); break;
+			am_absx(); lda(); cyc.foo(4); break;
 		case (byte)0xBE:
-			am(absy); exec(ldx); cyc.foo(4); break;
+			am_absy(); ldx(); cyc.foo(4); break;
 		case (byte)0xC0: // CPY #$08
-			am(imm); exec(cpy); cyc.foo(2); break;
+			am_imm(); exec(cpy); cyc.foo(2); break;
 		case (byte)0xC1:
-			am(indx); exec(cmp); cyc.foo(6); break;
+			am_indx(); exec(cmp); cyc.foo(6); break;
 		case (byte)0xC4: // CPY $62
-			am(zpg); exec(cpy); cyc.foo(3); break;
+			am_zpg(); exec(cpy); cyc.foo(3); break;
 		case (byte)0xC5: // CMP $61
-			am(zpg); exec(cmp); cyc.foo(3); break;
+			am_zpg(); exec(cmp); cyc.foo(3); break;
 		case (byte)0xC6: // Zpg DEC; e.g. DEC $10
-			am(zpg); exec(dec); cyc.foo(5); break;
+			am_zpg(); exec(dec); cyc.foo(5); break;
 		case (byte)0xC8: // INY
-			am(null); exec(iny); cyc.foo(2); break;
+			am_null(); exec(iny); cyc.foo(2); break;
 		case (byte)0xC9: // IMM CMP
-			am(imm); exec(cmp); cyc.foo(2); break;
+			am_imm(); exec(cmp); cyc.foo(2); break;
 		case (byte)0xCA: // DEX
-			am(null);exec(dex); cyc.foo(2); break;
+			am_null(); exec(dex); cyc.foo(2); break;
 		case (byte)0xCC:
-			am(abs); exec(cpy); cyc.foo(4); break;
+			am_abs(); exec(cpy); cyc.foo(4); break;
 		case (byte)0xCD:
-			am(abs); exec(cmp); cyc.foo(4); break;
+			am_abs(); exec(cmp); cyc.foo(4); break;
 		case (byte)0xCE:
-			am(abs); exec(dec); cyc.foo(6); break;
+			am_abs(); exec(dec); cyc.foo(6); break;
 		case (byte)0xD0:
-			am(rel); exec(bne); cyc.foo(2); break;
+			am_rel(); exec(bne); cyc.foo(2); break;
 		case (byte)0xD1:
-			am(indy); exec(cmp); cyc.foo(5); break;
+			am_indy(); exec(cmp); cyc.foo(5); break;
 		case (byte)0xD5:
-			am(zpgx); exec(cmp); cyc.foo(4); break;
+			am_zpgx(); exec(cmp); cyc.foo(4); break;
 		case (byte)0xD6:
-			am(zpgx); exec(dec); cyc.foo(6); break;
+			am_zpgx(); exec(dec); cyc.foo(6); break;
 		case (byte)0xD8: // CLD
-			am(null);exec(cld); cyc.foo(2); break;
+			am_null(); exec(cld); cyc.foo(2); break;
 		case (byte)0xD9: //
-			am(absy); exec(cmp); cyc.foo(4); break;
+			am_absy(); exec(cmp); cyc.foo(4); break;
 		case (byte)0xDD:
-			am(absx); exec(cmp); cyc.foo(4); break;
+			am_absx(); exec(cmp); cyc.foo(4); break;
 		case (byte)0xDE:
-			am(absx); exec(dec); cyc.foo(6); break;
+			am_absx(); exec(dec); cyc.foo(6); break;
 		case (byte)0xE0:
-			am(imm); exec(cpx); cyc.foo(2); break;
+			am_imm(); exec(cpx); cyc.foo(2); break;
 		case (byte)0xE1:
-			am(indx);exec(sbc); cyc.foo(6); break;
+			am_indx();exec(sbc); cyc.foo(6); break;
 		case (byte)0xE4:
-			am(zpg); exec(cpx); cyc.foo(3); break;
+			am_zpg(); exec(cpx); cyc.foo(3); break;
 		case (byte)0xE5: // SBC $4E
-			am(zpg); exec(sbc); cyc.foo(3); break;
+			am_zpg(); exec(sbc); cyc.foo(3); break;
 		case (byte)0xE6:
-			am(zpg); exec(inc); cyc.foo(5); break;
+			am_zpg(); exec(inc); cyc.foo(5); break;
 		case (byte)0xE8:
-			am(null);exec(inx); cyc.foo(2); break;
+			am_null();  exec(inx); cyc.foo(2); break;
 		case (byte)0xE9:
-			am(imm); exec(sbc); cyc.foo(2); break;
+			am_imm(); exec(sbc); cyc.foo(2); break;
 		case (byte)0xEA: // NOP
-			am(null);exec(nop); cyc.foo(2); break;
+			am_null(); exec(nop); cyc.foo(2); break;
 		case (byte)0xEC:
-			am(abs); exec(cpx); cyc.foo(4); break;
+			am_abs(); exec(cpx); cyc.foo(4); break;
 		case (byte)0xED:
-			am(abs); exec(sbc); cyc.foo(4); break;
+			am_abs(); exec(sbc); cyc.foo(4); break;
 		case (byte)0xEE:
-			am(abs); exec(inc); cyc.foo(5); break;
+			am_abs(); exec(inc); cyc.foo(5); break;
 		case (byte)0xF0:
-			am(rel); exec(beq); cyc.foo(2); break;
+			am_rel(); exec(beq); cyc.foo(2); break;
 		case (byte)0xF1:
-			am(indy); exec(sbc); cyc.foo(5); break;
+			am_indy(); exec(sbc); cyc.foo(5); break;
 		case (byte)0xF5:
-			am(zpgx); exec(sbc); cyc.foo(4); break;
+			am_zpgx(); exec(sbc); cyc.foo(4); break;
 		case (byte)0xF6:
-			am(zpgx); exec(inc); cyc.foo(6); break;
+			am_zpgx(); exec(inc); cyc.foo(6); break;
 		case (byte)0xF9:
-			am(absy);exec(sbc); cyc.foo(4); break;
+			am_absy();exec(sbc); cyc.foo(4); break;
 		case (byte)0xFD:
-			am(absx); exec(sbc); cyc.foo(4); break;
+			am_absx(); exec(sbc); cyc.foo(4); break;
 		case (byte)0xFE:
-			am(absx); exec(inc); cyc.foo(6); break;
+			am_absx(); exec(inc); cyc.foo(6); break;
 		default:
 			System.err.println("Op code " + 
 					String.format("%02X @ %04X (Instr #%d)", opcode, (regs.pc&0xFFFF),

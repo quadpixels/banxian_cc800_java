@@ -10,6 +10,74 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class TommyHelper {
+	//
+	// Note:
+	//   Those debug mechanisms are specific to my laptop. Specifically, I have changed BanXian's emulator so that it prints out
+	//   the disassembly log and zero page memory snapshots, and replays keystrokes by reading a "replay" file.
+	//   I have changed this Java port so that it prints out and compares the disassembly log and zero page memory snapshots,
+	//   replays keystrokes by reading the same replay file.
+	//   
+	//   Banxian's emulator and this Java port read the same config file.
+	//
+	//   These debugging features are for learning purposes and are quite crude.
+	//
+	//   To DISABLE disassembly and memory checking, write this in the config file:
+	//   IS_LOG_DISASSEMBLY=0
+	//   IS_LOG_MEM=0
+	//   
+	//   And you can play around with the emulator :D
+	//
+	//   The "replay" file would be loaded no matter what. It's like 按键精灵, it automagically presses the key with the
+	//     indicated MATRIX CODE. The first column is delay in number of instructions; the second is the matrix code,
+	//     the third line is 0 or 1 (release or pressed down)
+	//   In my experience, this replay is useful for finding out bugs. For example I had a bug after pressing 输入 20 times
+	//     in 名片 . It'd be tedious to repeat pressing the key 20 times every time you debug, plus, you have to press the
+	//     keys at the same exact time to reveal the bug. That's where the replay mechanism comes into play.
+	//
+	//   If trace file comparison is enabled, execution is considered OK if the following is outputted to the console:
+	//  ##### Trace file checking status: ######
+	// Instruction trace file 100% checked.
+	// Instruction trace file curr_line=10001
+	// Memory trace file 100% checked.
+	// Memory trace file curr_line=2007
+	//
+	//   It says 100% so it completed comparing all the instructions in the log file without a hitch.
+	//   The program terminates in a violent way by throwing exceptions. This is not an error, I did this because I was very lazy. (I know
+	//     it's a bad habit and it's not elegant)
+	//   Trace comparison is VERY SLOW because a lot of java.lang.String's are being created. It's very slow!!
+	//
+	// Note: different NMI settings would generate DIFFERENT logs. In this example the 1000001st to 1010000th instructions were compared.
+	//   If you want to compare against Banxian's emulator, you may wish to change the NMI settings as well.
+	//   
+	
+	// Working directory.
+	// !!!!! NOTE: I'm tesing in Windows so file separator is "\\". In Linux it would be "/".
+	private static final String WORKING_DIR = ".\\";
+	
+	// Please change this path correspondingly !
+	// This file says whether we load a replay file, a disassembly log, and a series of memory snapshots.
+	private static final String CONFIG_FILE_PATH = WORKING_DIR +"config.txt";
+
+	// This file says where the replay file lives.
+	private static final String REPLAY_FILE_PATH = WORKING_DIR + "replay.txt";
+
+	// This is disassembly log file, which looks like the following:
+	// 0570  A5C7    LDA  $C7       00 01 1F 01F6 00100011
+	// 0572  3014    BMI  $588      00 01 1F 01F6 00100011
+	// 0574  EC6B04  CPX  $046B     00 01 1F 01F6 00100011
+	// 0577  D00F    BNE  $588      00 01 1F 01F6 00100011
+	// 0579  ADAC04  LDA  $04AC     00 01 1F 01F6 00100011
+	//
+	// The columns are, from left to right: memory locations, machine codes, instructions, A, X, Y, SP and State flags.
+	private static final String DISASSEMBLY_LOG_FILE_PATH = WORKING_DIR + "Sim800.txt";
+	
+	// This is memory snapshots of zero page varaibles. It is taken after every X instructions as indicated in the config file.
+	// It looks like this (it is quite long!)
+	// 1000005 05 A8 00 00 0A D8 9C 20 00 00 10 03 4F 54 00 00 00 00 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0C 00 01 77 00 00 D8 06 1F 19 00 1B CD FF 1E 1E 1F 2A 0C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 14 06 0C 00 00 77 00 00 00 03 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 77 0B 20 01 5A 0B 30 00 03 03 00 00 E5 4E C0 19 00 00 B5 55 3C 0E 10 01 02 19 00 00 00 00 01 00 00 E0 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF 00 00 00 00 00 00 33 41 01 00 00 00 F2 A8 00 00 00 00 92 00 FF FF FF FF FF FF 00 00 00 00 00 00 A8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+	// 1000010 05 A8 00 00 0A D8 9C 20 00 00 10 03 4F 54 00 00 00 00 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0C 00 01 77 00 00 D8 06 1F 19 00 1B CD FF 1E 1E 1F 2A 0C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 14 06 0C 00 00 77 00 00 00 03 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 77 0B 20 01 5A 0B 30 00 03 03 00 00 E5 4E C0 19 00 00 B5 55 3C 0E 10 01 02 19 00 00 00 00 01 00 00 E0 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF 00 00 00 00 00 00 33 41 01 00 00 00 F2 A8 00 00 00 00 92 00 FF FF FF FF FF FF 00 00 00 00 00 00 A8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+	//
+	private static final String MEMORY_SNAPSHOTS_FILE_PATH = WORKING_DIR + "BiscuitDump.txt";
+	
 	public static CPU cpu = null;
 	public static String my_line;
 	public static int NUM_INSTS_SKIP = 237000;
@@ -21,7 +89,7 @@ public class TommyHelper {
 	public static int UP_POKE_NUMINST=-1;
 	
 	public static void syncWithSim800() {
-		File f = new File("C:\\Users\\nitroglycerine\\Downloads\\Sim800_src_hotkey\\Sim800\\config.txt");
+		File f = new File(CONFIG_FILE_PATH);
 		FileReader fr;
 		try {
 			fr = new FileReader(f);
@@ -97,7 +165,7 @@ public class TommyHelper {
 		try {
 			// 1. Count number of lines
 			File replay_file;
-			replay_file = new File("C:\\Users\\nitroglycerine\\Downloads\\Sim800_src_hotkey\\Sim800\\replay.txt");
+			replay_file = new File(REPLAY_FILE_PATH);
 			FileReader fr = new FileReader(replay_file);
 			BufferedReader br = new BufferedReader(fr);
 			br.mark(0);
@@ -167,11 +235,11 @@ public class TommyHelper {
 	
 	static void openBanxianDump() {
 		try {
-			banxian_dump = new File("C:\\Users\\nitroglycerine\\Downloads\\Sim800_src_hotkey\\Sim800\\Sim800.txt");
+			banxian_dump = new File(DISASSEMBLY_LOG_FILE_PATH);
 			fr = new FileReader(banxian_dump);
 			br = new BufferedReader(fr, 100);
 			
-			banxian_biscuit = new File("C:\\Users\\nitroglycerine\\Downloads\\Sim800_src_hotkey\\Sim800\\BiscuitDump.txt");
+			banxian_biscuit = new File(MEMORY_SNAPSHOTS_FILE_PATH);
 			fr_bisc = new FileReader(banxian_biscuit);
 			br_bisc = new BufferedReader(fr_bisc, 100);
 		} catch (Exception e) {
